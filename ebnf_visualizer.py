@@ -113,15 +113,12 @@ class Grammar:
 
             for base_rule in base_rules:
 
-                self.rules[base_rule]                  = {"tokens"   : None , "called_by": []}
-                self.rules[base_rule]["tokens"]        = {}
-                self.terminals[base_rule]              = {"terminals": None}
-                self.terminals[base_rule]["terminals"] = []
-
+                self.rules[base_rule] = {"called_by": [], "tokens": {}}
+                self.terminals[base_rule] = {"terminals": []}
                 # find the tokens grouped by tpe if rule or terminal or regex match
                 if self.showMD:
                     with self.main():
-                        st.markdown("# ```" + base_rule + " ::=``` ")
+                        st.markdown(f"# ```{base_rule} ::=``` ")
 
                 # find the items in each rule
                 tokens = re.findall(r'\n' + base_rule + r"[\n\s]*::=(\n*\s*[^\n]+\n)+?(?<!\n\w)", grammar)
@@ -129,15 +126,14 @@ class Grammar:
 
                     if self.showMD:
                         with self.main():
-                            st.markdown("``` " + token + " ```")
+                            st.markdown(f"``` {token} ```")
 
                     # for each rule, find the terminals
                     rules = re.findall(
                         r"(([A-Za-z_]+[?*+]?)|(\[.+\\])|(\'[^\']+\'[?*+]))",
                         token,
                     )
-                    i = 1
-                    for rule in rules:
+                    for i, rule in enumerate(rules, start=1):
                         [fillrule, tokentype] = (
                             [rule[1], "rule"] if rule[1] != "" else [rule[2], "terminal"] if rule[2] != "" else [
                                 rule[3], "terminal"]
@@ -147,17 +143,16 @@ class Grammar:
                             "value": fillrule,
                             "modifier": self.get_modifier(fillrule),
                         }
-                        i += 1
-                        fillrule = fillrule[0:-1] if fillrule.endswith(('?', '+', '*')) else fillrule
+                        fillrule = fillrule[:-1] if fillrule.endswith(('?', '+', '*')) else fillrule
                         if self.showMD:
                             with self.main():
-                                st.markdown("- #### " + tokentype + ": ```" + fillrule + "```")
+                                st.markdown(f"- #### {tokentype}: ```{fillrule}```")
                         if fillrule not in self.terminals[base_rule]['terminals']:
                             self.terminals[base_rule]["terminals"].append(fillrule)
 
         for base_rule in self.terminals:
             for token in self.terminals[base_rule]["terminals"]:
-                token = token[0:-1] if token.endswith(('?', '+', '*')) else token
+                token = token[:-1] if token.endswith(('?', '+', '*')) else token
                 if token in self.rules:
                     self.rules[token]["called_by"].append(base_rule)
         with self.main():
