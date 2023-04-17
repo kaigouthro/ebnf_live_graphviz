@@ -1,8 +1,9 @@
-import json
 import re
-
 import graphviz
+
+
 import streamlit as st
+graphviz = st.cache(graphviz)
 from streamlit_ace import st_ace
 from streamlit_agraph import Edge, Node, agraph
 from streamlit_agraph.config import Config, ConfigBuilder
