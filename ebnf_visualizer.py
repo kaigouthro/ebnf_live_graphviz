@@ -1,9 +1,6 @@
 import re
-import graphviz
-
-
+import graphviz as graphviz
 import streamlit as st
-graphviz = st.cache(graphviz)
 from streamlit_ace import st_ace
 from streamlit_agraph import Edge, Node, agraph
 from streamlit_agraph.config import Config, ConfigBuilder
@@ -51,17 +48,13 @@ class Grammar:
         self.rules = {}
         self.terminals = {}
         self.tokens = {}
-        self.graph = None
+        self.graph = graphviz.Digraph()
         self.json = False
         self.specific = False
         self.graphic = False
         self.showMD = False
         self.ran = False
         self.main = st.container
-        self.color1 = st.sidebar.color_picker("Color 1", "#aaf", key="color1")
-        self.color2 = st.sidebar.color_picker("Color 2", "#dc0", key="color2")
-        self.size1 = st.sidebar.slider("Size 1", 10, 100, 20, key="size1")
-        self.size2 = st.sidebar.slider("Size 2", 10, 100, 10, key="size2")
         self.nodes = []
         self.edges = []
         self.parse()
@@ -180,6 +173,12 @@ class Grammar:
             if self.specific:
                 st.write(self.rules)
             if self.graphic:
+                self.showGV = st.sidebar.checkbox("Show Graphviz", value=False)
+                self.color1 = st.sidebar.color_picker("Color 1", "#aaf", key="color1")
+                self.color2 = st.sidebar.color_picker("Color 2", "#ffc", key="color2")
+                self.color3 = st.sidebar.color_picker("Color 3", "#cfc", key="color3")
+                self.color4 = st.sidebar.color_picker("Color 4", "#cff", key="color4")
+
                 self.build_graph()
 
     @staticmethod
@@ -198,21 +197,10 @@ class Grammar:
 
     def build_graph(self):
         # show graph if enabled
-        self.graph = graphviz.Digraph(strict=True)
+
         if self.graphic:
             for rnum, rule in enumerate(self.rules):
                 # check self.nodes before adding to avoid duplicates
-                if rule not in [node.id for node in self.nodes]:
-                    self.nodes.append(
-                        Node(
-                            id=rule,
-                            label=rule,
-                            size=self.size1,
-                            color=self.color1,
-                            shape="box",
-                        )
-                    )
-                    self.graph.node(rule, shape="box")
 
                 for token in self.terminals[rule]["terminals"]:
                     if token not in self.terminals:
@@ -221,27 +209,37 @@ class Grammar:
                                 Node(
                                     id=token,
                                     label=token,
-                                    size=self.size2,
                                     color=self.color2,
+                                    shape="rounded",
+                                    group = rule
                                 )
                             )
                         self.graph.node(token, shape="ellipse")
-                    self.edges.append(Edge(source=token, target=rule))
-                    self.graph.edge(token, rule)
+                    self.edges.append(Edge(source=token, target=rule, color= self.color4))
+                    self.graph.edge(token, rule,color= self.color4)
                     for called in self.rules[rule]["called_by"]:
-                        self.edges.append(Edge(source=called, target=rule))
-                        self.graph.edge(called, rule)
+                        self.edges.append(Edge(source=called, target=rule, color= self.color3))
+                        self.graph.edge(called, rule,color= self.color3)
+                if rule not in [node.id for node in self.nodes]:
+                    self.nodes.append(
+                        Node(
+                            id=rule,
+                            label=rule,
+                            color=self.color1,
+                            shape="box",
+                        )
+                    )
+                    self.graph.node(rule, shape="box")
 
             self.config_builder = ConfigBuilder(self.nodes)
             config = self.config_builder.build()
-            config.width = "100%"
 
-            config.save("config.json")
-
-            config = Config(from_json="config.json")
 
             agraph(nodes=self.nodes, edges=self.edges, config=config)
-            st.graphviz_chart(self.graph, use_container_width=True)
+
+            if self.showGV:
+
+                st.graphviz_chart(self.graph, use_container_width=True)
             st.write(self.graph.source)
 
 
