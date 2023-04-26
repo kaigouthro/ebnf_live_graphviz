@@ -1,5 +1,10 @@
 import re
-pip install graphviz
+import sys
+import subprocess
+
+# get graph viz
+subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'graphviz'])
+
 import graphviz as graphviz
 import streamlit as st
 from streamlit_ace import st_ace
