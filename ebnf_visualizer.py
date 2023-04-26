@@ -1,4 +1,5 @@
 import re
+pip install graphviz
 import graphviz as graphviz
 import streamlit as st
 from streamlit_ace import st_ace
