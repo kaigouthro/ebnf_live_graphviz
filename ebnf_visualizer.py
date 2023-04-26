@@ -191,56 +191,55 @@ class Grammar:
             return "1 or none"
         if rule.endswith("*"):
             return "0+"
-        if rule.endswith("+"):
-            return "1+"
-        return "none"
+        return "1+" if rule.endswith("+") else "none"
 
     def build_graph(self):
         # show graph if enabled
 
-        if self.graphic:
-            for rnum, rule in enumerate(self.rules):
-                # check self.nodes before adding to avoid duplicates
+        if not self.graphic:
+            return
+        for rnum, rule in enumerate(self.rules):
+            # check self.nodes before adding to avoid duplicates
 
-                for token in self.terminals[rule]["terminals"]:
-                    if token not in self.terminals:
-                        if token not in [node.id for node in self.nodes]:
-                            self.nodes.append(
-                                Node(
-                                    id=token,
-                                    label=token,
-                                    color=self.color2,
-                                    shape="rounded",
-                                    group = rule
-                                )
+            for token in self.terminals[rule]["terminals"]:
+                if token not in self.terminals:
+                    if token not in [node.id for node in self.nodes]:
+                        self.nodes.append(
+                            Node(
+                                id=token,
+                                label=token,
+                                color=self.color2,
+                                shape="rounded",
+                                group = rule
                             )
-                        self.graph.node(token, shape="ellipse")
-                    self.edges.append(Edge(source=token, target=rule, color= self.color4))
-                    self.graph.edge(token, rule,color= self.color4)
-                    for called in self.rules[rule]["called_by"]:
-                        self.edges.append(Edge(source=called, target=rule, color= self.color3))
-                        self.graph.edge(called, rule,color= self.color3)
-                if rule not in [node.id for node in self.nodes]:
-                    self.nodes.append(
-                        Node(
-                            id=rule,
-                            label=rule,
-                            color=self.color1,
-                            shape="box",
                         )
+                    self.graph.node(token, shape="ellipse")
+                self.edges.append(Edge(source=token, target=rule, color= self.color4))
+                self.graph.edge(token, rule,color= self.color4)
+                for called in self.rules[rule]["called_by"]:
+                    self.edges.append(Edge(source=called, target=rule, color= self.color3))
+                    self.graph.edge(called, rule,color= self.color3)
+            if rule not in [node.id for node in self.nodes]:
+                self.nodes.append(
+                    Node(
+                        id=rule,
+                        label=rule,
+                        color=self.color1,
+                        shape="box",
                     )
-                    self.graph.node(rule, shape="box")
+                )
+                self.graph.node(rule, shape="box")
 
-            self.config_builder = ConfigBuilder(self.nodes)
-            config = self.config_builder.build()
+        self.config_builder = ConfigBuilder(self.nodes)
+        config = self.config_builder.build()
 
 
-            agraph(nodes=self.nodes, edges=self.edges, config=config)
+        agraph(nodes=self.nodes, edges=self.edges, config=config)
 
-            if self.showGV:
+        if self.showGV:
 
-                st.graphviz_chart(self.graph, use_container_width=True)
-            st.write(self.graph.source)
+            st.graphviz_chart(self.graph, use_container_width=True)
+        st.write(self.graph.source)
 
 
 # create the grammar
