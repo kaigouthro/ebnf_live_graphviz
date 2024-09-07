@@ -1,15 +1,17 @@
 import re
 import sys
 import subprocess
+import tempfile
 
 # get graph viz
-subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'graphviz'])
+# subprocess.check_call([sys.executable, "-m", "pip", "install", "graphviz","streamlit_ace", "streamlit-agraph"])
 
 import graphviz as graphviz
 import streamlit as st
 from streamlit_ace import st_ace
 from streamlit_agraph import Edge, Node, agraph
 from streamlit_agraph.config import Config, ConfigBuilder
+
 
 examplegrammar = """
 Grammar  ::= Production*
@@ -52,7 +54,7 @@ class Grammar:
     def __init__(self):
         self.grammar = ""
         self.rules = {}
-        self.terminals = {}
+        self.terminals = set()
         self.tokens = {}
         self.graph = graphviz.Digraph()
         self.json = False
@@ -63,7 +65,6 @@ class Grammar:
         self.main = st.container
         self.nodes = []
         self.edges = []
-        self.parse()
 
     def parse(self):
         side = st.sidebar
@@ -104,139 +105,137 @@ class Grammar:
         if auto:
             self.graphic = True
 
+        if not self.ran and self.grammar:
+            self.ran = True
+            self.parse_grammar()
+            if self.graphic:
+                self.build_graph()
+
+    def parse_grammar(self):
         grammar = self.grammar
 
         # find all rules
-        base_rules = re.findall(r"\n([A-Za-z0-9_]+)[\n\s]*::=", grammar)
+        for rule_match in re.findall(
+            r"^\s*([A-Za-z0-9_]+)\s*::=\s*(.+)$", grammar, re.MULTILINE
+        ):
+            rule_name, rule_definition = rule_match
+            self.rules[rule_name] = {"called_by": [], "tokens": []}
 
-        while not self.ran:
-            self.ran = True
+            # Parse the rule definition
+            tokens = re.findall(
+                r"([A-Za-z0-9_]+|\[[^\]]+\]|'[^']+'|\"[^\"]+\")", rule_definition
+            )
 
-            for base_rule in base_rules:
-                self.rules[base_rule] = {"called_by": [], "tokens": {}}
-                self.terminals[base_rule] = {"terminals": []}
-                # find the tokens grouped by tpe if rule or terminal or regex match
-                if self.showMD:
-                    with self.main():
-                        st.markdown(f"# ```{base_rule} ::=``` ")
-
-                # find the items in each rule
-                tokens = re.findall(
-                    r"\n" + base_rule + r"[\n\s]*::=(\n*\s*[^\n]+\n)+?(?<!\n\w)",
-                    grammar,
+            for i, token in enumerate(tokens):
+                # Extract and convert #x... characters
+                token = re.sub(
+                    r"#x([0-9a-fA-F]+)", lambda m: chr(int(m.group(1), 16)), token
                 )
-                for token in tokens:
-                    if self.showMD:
-                        with self.main():
-                            st.markdown(f"``` {token} ```")
 
-                    # for each rule, find the terminals
-                    rules = re.findall(
-                        r"(([A-Za-z_]+[?*+]?)|(\[.+\\])|(\'[^\']+\'[?*+]))",
-                        token,
+                modifier = self.get_modifier(token)
+
+                # Handle [^...] for "anything except"
+                if re.match(r"\[[^\]]+\]", token):
+                    token_type = "anything except"
+                    excluded_chars = token[1:-1]  # Extract characters between brackets
+                    # If '^' is present, it means "anything except these characters"
+                    if excluded_chars.startswith("^"):
+                        excluded_chars = excluded_chars[1:]
+                        token = f"anything except: {excluded_chars}"  # Display excluded characters
+                    else:
+                        token = f"only these characters: {excluded_chars}"  # Display included characters
+
+                    self.rules[rule_name]["tokens"].append(
+                        {"type": token_type, "value": token, "modifier": modifier}
                     )
-                    self.rules[base_rule]["name"] = base_rule
-                    for i, rule in enumerate(rules, start=1):
-                        [fillrule, tokentype] = (
-                            [rule[1], "rule"]
-                            if rule[1] != ""
-                            else [rule[2], "terminal"]
-                            if rule[2] != ""
-                            else [rule[3], "terminal"]
-                        )
+                    continue
 
-                        self.rules[base_rule]["tokens"][i] = {
-                            "type": tokentype,
-                            "value": fillrule,
-                            "modifier": self.get_modifier(fillrule),
-                        }
-                        fillrule = fillrule[:-1] if fillrule.endswith(("?", "+", "*")) else fillrule
-                        if self.showMD:
-                            with self.main():
-                                st.markdown(f"- #### {tokentype}: ```{fillrule}```")
-                        if fillrule not in self.terminals[base_rule]["terminals"]:
-                            self.terminals[base_rule]["terminals"].append(fillrule)
+                token_type = "rule" if token in self.rules else "terminal"
+                if token_type == "terminal":
+                    self.terminals.add(token)
 
-        for base_rule in self.terminals:
-            for token in self.terminals[base_rule]["terminals"]:
-                token = token[:-1] if token.endswith(("?", "+", "*")) else token
-                if token in self.rules:
-                    self.rules[token]["called_by"].append(base_rule)
+                self.rules[rule_name]["tokens"].append(
+                    {"type": token_type, "value": token, "modifier": modifier}
+                )
+
+        for rule_name, rule_data in self.rules.items():
+            for token_data in rule_data["tokens"]:
+                if token_data["type"] == "rule":
+                    self.rules[token_data["value"]]["called_by"].append(rule_name)
+
         with self.main():
             if self.json:
-                st.write(self.terminals)
+                st.write(self.rules)
             if self.specific:
                 st.write(self.rules)
-            if self.graphic:
-                self.showGV = st.sidebar.checkbox("Show Graphviz", value=False)
-                self.color1 = st.sidebar.color_picker("Color 1", "#aaf", key="color1")
-                self.color2 = st.sidebar.color_picker("Color 2", "#ffc", key="color2")
-                self.color3 = st.sidebar.color_picker("Color 3", "#cfc", key="color3")
-                self.color4 = st.sidebar.color_picker("Color 4", "#cff", key="color4")
-
-                self.build_graph()
 
     @staticmethod
     def get_modifier(rule: str):
-        """
-        finds if match has a modifier, and returns type..
-        TODO: add capability to find parentheses
-        """
         if rule.endswith("?"):
-            return "1 or none"
-        if rule.endswith("*"):
-            return "0+"
-        return "1+" if rule.endswith("+") else "none"
+            return "optional"
+        elif rule.endswith("*"):
+            return "zero or more"
+        elif rule.endswith("+"):
+            return "one or more"
+        else:
+            return "none"
 
     def build_graph(self):
-        # show graph if enabled
-
         if not self.graphic:
             return
-        for rnum, rule in enumerate(self.rules):
-            # check self.nodes before adding to avoid duplicates
+        self.showGV = st.sidebar.checkbox("Show Graphviz", value=False)
+        self.color1 = st.sidebar.color_picker("Color 1", "#aaf", key="color1")
+        self.color2 = st.sidebar.color_picker("Color 2", "#ffc", key="color2")
+        self.color3 = st.sidebar.color_picker("Color 3", "#cfc", key="color3")
+        self.color4 = st.sidebar.color_picker("Color 4", "#cff", key="color4")
+        for rule_name, rule_data in self.rules.items():
+            if not any(node.id == rule_name for node in self.nodes):
+                self.nodes.append(
+                    Node(id=rule_name, label=rule_name, color=self.color1, shape="box")
+                )
+                self.graph.node(rule_name, shape="box")
 
-            for token in self.terminals[rule]["terminals"]:
-                if token not in self.terminals:
-                    if token not in [node.id for node in self.nodes]:
+            for token_data in rule_data["tokens"]:
+                token_name = token_data["value"]
+                if token_data["type"] == "terminal":
+                    if not any(node.id == token_name for node in self.nodes):
                         self.nodes.append(
                             Node(
-                                id=token,
-                                label=token,
+                                id=token_name,
+                                label=token_name,
                                 color=self.color2,
-                                shape="rounded",
-                                group = rule
+                                shape="ellipse",
                             )
                         )
-                    self.graph.node(token, shape="ellipse")
-                self.edges.append(Edge(source=token, target=rule, color= self.color4))
-                self.graph.edge(token, rule,color= self.color4)
-                for called in self.rules[rule]["called_by"]:
-                    self.edges.append(Edge(source=called, target=rule, color= self.color3))
-                    self.graph.edge(called, rule,color= self.color3)
-            if rule not in [node.id for node in self.nodes]:
-                self.nodes.append(
-                    Node(
-                        id=rule,
-                        label=rule,
-                        color=self.color1,
-                        shape="box",
+                        self.graph.node(token_name, shape="ellipse")
+                    self.edges.append(
+                        Edge(source=token_name, target=rule_name, color=self.color4)
                     )
+                    self.graph.edge(token_name, rule_name, color=self.color4)
+                else:
+                    self.edges.append(
+                        Edge(source=token_name, target=rule_name, color=self.color3)
+                    )
+                    self.graph.edge(token_name, rule_name, color=self.color3)
+
+        for rule_name, rule_data in self.rules.items():
+            for called_by in rule_data["called_by"]:
+                self.edges.append(
+                    Edge(source=called_by, target=rule_name, color=self.color3)
                 )
-                self.graph.node(rule, shape="box")
+                self.graph.edge(called_by, rule_name, color=self.color3)
 
         self.config_builder = ConfigBuilder(self.nodes)
         config = self.config_builder.build()
 
-
         agraph(nodes=self.nodes, edges=self.edges, config=config)
 
         if self.showGV:
-
-            st.graphviz_chart(self.graph, use_container_width=True)
-        st.write(self.graph.source)
+            st.graphviz_chart(self.graph.source, use_container_width=True)
+            st.code(self.graph.source)
 
 
 # create the grammar
 if __name__ == "__main__":
     Gram = Grammar()
+    Gram.parse()
