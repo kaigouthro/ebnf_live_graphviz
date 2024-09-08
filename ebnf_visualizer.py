@@ -72,44 +72,52 @@ class Grammar:
             st.markdown("# Grammar Guide")
             st.markdown("[converter here](https://www.bottlecaps.de/convert/)")
             st.markdown("```https://www.bottlecaps.de/convert/```")
-            auto = st.checkbox(
-                key="autogen",
-                label="Auto-generate grammar live for graphviz",
-                value=False,
-            )
-            show = (
-                "graphviz"
-                if auto
-                else st.selectbox(
-                    "Show Grammar as..", ["markdown", "json", "specific", "graphviz"]
-                )
+
+            show = st.selectbox(
+                "Show Grammar as..",
+                ["markdown", "json", "specific", "graph"],
+                key="Select_vis",
             )
             Font = st.slider("Font size", 12, 16, 20, key="font")
         with self.main():
             self.grammar = st_ace(
                 value=examplegrammar,
-                auto_update=auto,
+                auto_update=True,
                 show_gutter=False,
                 font_size=Font,
                 language="coffee",
                 theme="monokai",
+                key="gammar_input",
             )
         # if change, set ran to no
         if self.grammar:
             self.ran = False
 
-        self.graphic = show == "graphviz"
+        self.graphic = show == "graph"
         self.json = show == "json"
         self.specific = show == "specific"
         self.showMD = show == "markdown"
-        if auto:
-            self.graphic = True
 
         if not self.ran and self.grammar:
             self.ran = True
             self.parse_grammar()
+            if self.showMD:
+                self.render_markdown()  # Call the markdown renderer
             if self.graphic:
                 self.build_graph()
+
+    def render_markdown(self):
+        """Renders the grammar in markdown format."""
+        with self.main():
+            for rule_name, rule_data in self.rules.items():
+                st.markdown(f"# ```{rule_name} ::=```")
+                for token_data in rule_data["tokens"]:
+                    token_type = token_data["type"]
+                    token_value = token_data["value"]
+                    modifier = token_data["modifier"]
+                    st.markdown(
+                        f"- #### {token_type}: ```{token_value}``` ({modifier})"
+                    )
 
     def parse_grammar(self):
         grammar = self.grammar
@@ -120,33 +128,36 @@ class Grammar:
         ):
             rule_name, rule_definition = rule_match
             self.rules[rule_name] = {"called_by": [], "tokens": []}
-
-            # Parse the rule definition
             tokens = re.findall(
-                r"([A-Za-z0-9_]+|\[[^\]]+\]|'[^']+'|\"[^\"]+\")", rule_definition
+                r"([A-Za-z0-9_]+|\[[^\]]+\]|'[^']+'|\"[^\"]+\")(\*|\+|\?)?",
+                rule_definition,
             )
 
-            for i, token in enumerate(tokens):
+            for token, modifier in tokens:  # Unpack token and modifier
                 # Extract and convert #x... characters
                 token = re.sub(
                     r"#x([0-9a-fA-F]+)", lambda m: chr(int(m.group(1), 16)), token
                 )
 
-                modifier = self.get_modifier(token)
-
                 # Handle [^...] for "anything except"
-                if re.match(r"\[[^\]]+\]", token):
-                    token_type = "anything except"
+                if re.match(r"\[(?:(?:\\.|[^\]]+?)(?=[^\\]\]))\]", token):
+                    token = " ".join(re.findall("\\.", token))
                     excluded_chars = token[1:-1]  # Extract characters between brackets
                     # If '^' is present, it means "anything except these characters"
                     if excluded_chars.startswith("^"):
                         excluded_chars = excluded_chars[1:]
-                        token = f"anything except: {excluded_chars}"  # Display excluded characters
+                        token_type = "none"
+                        token = f"{excluded_chars}"  # Display excluded characters
                     else:
-                        token = f"only these characters: {excluded_chars}"  # Display included characters
+                        token_type = "any"
+                        token = f"[{excluded_chars}]"  # Display included characters
 
                     self.rules[rule_name]["tokens"].append(
-                        {"type": token_type, "value": token, "modifier": modifier}
+                        {
+                            "type": token_type,
+                            "value": token,
+                            "modifier": modifier or "none",
+                        }  # Use extracted modifier or "none"
                     )
                     continue
 
@@ -155,7 +166,11 @@ class Grammar:
                     self.terminals.add(token)
 
                 self.rules[rule_name]["tokens"].append(
-                    {"type": token_type, "value": token, "modifier": modifier}
+                    {
+                        "type": token_type,
+                        "value": token,
+                        "modifier": modifier or "none",
+                    }  # Use extracted modifier or "none"
                 )
 
         for rule_name, rule_data in self.rules.items():
